@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume NER Processor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; background-color: #f9f9f9; color: #333; }
+        .container { background: white; border: 1px solid #ddd; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #007bff; }
+        .file-input-wrapper { margin: 20px 0; border: 2px dashed #ccc; padding: 20px; text-align: center; border-radius: 6px; }
+        .file-list { margin: 15px 0; font-size: 0.9em; color: #666; max-height: 150px; overflow-y: auto; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 25px; cursor: pointer; border-radius: 5px; font-size: 16px; transition: background 0.2s; width: 100%; }
+        button:hover { background-color: #0056b3; }
+        pre { background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 5px; overflow-x: auto; font-family: 'Consolas', monospace; }
+        ul { list-style-type: none; padding: 0; }
+        li { padding: 5px 0; border-bottom: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #e2e6ef; padding: 10px; text-align: left; font-size: 0.95rem; }
+        th { background: #f4f6fb; color: #0c2146; }
+        tbody tr:nth-child(odd) { background: #f9fbff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📄 Batch Resume Processor</h2>
+    <p>Upload multiple PDFs to extract Name, Email, Phone, Gender, and DOB.</p>
+
+    <div id="uploader">
+        <div class="file-input-wrapper">
+            <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" />
+        </div>
+        
+        <div id="fileList" class="file-list"></div>
+
+        <button type="button" id="processBtn" aria-label="Process the selected resumes">Process Resumes</button>
+    </div>
+
+    <h3>Results</h3>
+    <pre id="output">Waiting for input...</pre>
+
+    <table aria-label="Resume extraction results">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Gender</th>
+                <th>DOB</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    </table>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const fileListDisplay = document.getElementById('fileList');
+    const outputDisplay = document.getElementById('output');
+    const processBtn = document.getElementById('processBtn');
+    const resultsBody = document.getElementById('resultsBody');
+
+    // Defensive: keep this button from ever submitting or bubbling to any outer form/container.
+    processBtn.type = 'button';
+
+    fileInput.addEventListener('change', showFileNames);
+    processBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        processFiles();
+        return false;
+    });
+
+    function showFileNames() {
+        const files = fileInput.files;
+        if (files.length > 0) {
+            let names = "<strong>Selected Files:</strong><ul>";
+            for (const file of files) {
+                names += `<li>${file.name}</li>`;
+            }
+            names += "</ul>";
+            fileListDisplay.innerHTML = names;
+        } else {
+            fileListDisplay.innerHTML = "";
+        }
+    }
+
+    async function processFiles() {
+        console.log('Files selected:', fileInput.files.length);
+        if (fileInput.files.length === 0) {
+            alert("Please select at least one file.");
+            return;
+        }
+
+        outputDisplay.textContent = "Processing... please wait.";
+        resultsBody.innerHTML = "";
+        
+        const formData = new FormData();
+        for (const file of fileInput.files) {
+            formData.append('files', file);
+        }
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/analyze-resumes', {
+                method: 'POST',
+                body: formData
+            });
+
+            console.log('Response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`Server Error: ${response.statusText}`);
+            }
+
+            const raw = await response.text();
+            console.log('Raw response:', raw);
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+                console.log('Parsed JSON:', parsed);
+            } catch (parseError) {
+                console.log('Parse error:', parseError);
+                parsed = raw;
+            }
+
+            if (typeof parsed === 'string') {
+                outputDisplay.textContent = parsed;
+            } else {
+                outputDisplay.textContent = "Done";
+                renderTable(parsed);
+            }
+            
+        } catch (error) {
+            console.log('Fetch error:', error);
+            outputDisplay.textContent = "Error: " + error.message;
+            resultsBody.innerHTML = "";
+        }
+    }
+
+    function renderTable(data) {
+        if (!Array.isArray(data) || data.length === 0) {
+            resultsBody.innerHTML = "";
+            return;
+        }
+
+        const rows = data.map((entry) => {
+            const person = entry.data || {};
+            return `
+                <tr>
+                    <td>${entry.filename || 'NA'}</td>
+                    <td>${person.name || 'NA'}</td>
+                    <td>${person.email || 'NA'}</td>
+                    <td>${person.phone || 'NA'}</td>
+                    <td>${person.gender || 'NA'}</td>
+                    <td>${person.DOB || 'NA'}</td>
+                </tr>
+            `;
+        });
+
+        resultsBody.innerHTML = rows.join('');
+    }
+</script>
+
+</body>
+</html>
