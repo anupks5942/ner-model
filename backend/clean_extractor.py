@@ -20,14 +20,14 @@ try:
     nlp = spacy.load("en_core_web_trf")
     logger.info("✅ Loaded 'en_core_web_trf' (High Accuracy Model)")
 except OSError:
-    logger.warning("⚠️ 'en_core_web_trf' not found. Falling back to 'en_core_web_sm'.")
+    logger.warning("⚠️ 'en_core_web_trf' not found. Falling back to 'en_core_web_trf'.")
     logger.warning("👉 FOR MAX ACCURACY: Run 'python -m spacy download en_core_web_trf'")
     try:
-        nlp = spacy.load("en_core_web_sm")
+        nlp = spacy.load("en_core_web_trf")
     except OSError:
         from spacy.cli import download
-        download("en_core_web_sm")
-        nlp = spacy.load("en_core_web_sm")
+        download("en_core_web_trf")
+        nlp = spacy.load("en_core_web_trf")
 
 # ==========================================
 # 2. ADVANCED FILE READING (The XML Hack)

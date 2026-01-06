@@ -8,9 +8,12 @@ from typing import List
 # Import extraction logic
 from clean_extractor import process_resume_file 
 
+# --- ADD THIS IMPORT ---
+from pipeline import save_and_fetch_mysql, save_csv_to_s3
+# -----------------------
+
 app = FastAPI()
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,21 +26,33 @@ async def analyze_resumes(files: List[UploadFile] = File(...)):
     results = []
 
     for file in files:
-        # Write temp files outside the workspace to avoid triggering any live-reload watchers
         tmp_dir = tempfile.gettempdir()
         temp_filename = os.path.join(tmp_dir, f"temp_{file.filename}")
         
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Run Extraction
+        # 1. Run Extraction (Using your new, better extractor)
         data = process_resume_file(temp_filename)
 
-        # Cleanup
+        # Cleanup temp file
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
 
-        # Format output as requested
+        # --- ADD PIPELINE LOGIC HERE ---
+        if "error" not in data:
+            try:
+                # 2. Save to MySQL
+                db_row = save_and_fetch_mysql(data)
+                
+                # 3. Upload CSV to S3 (Triggers Snowflake)
+                save_csv_to_s3(db_row)
+                
+                print(f"Pipeline success for {file.filename}")
+            except Exception as e:
+                print(f"Pipeline failed for {file.filename}: {e}")
+        # -------------------------------
+
         formatted_result = {
             "filename": file.filename,
             "data": {
@@ -49,7 +64,5 @@ async def analyze_resumes(files: List[UploadFile] = File(...)):
             }
         }
         results.append(formatted_result)
-
-    print(results)
 
     return results

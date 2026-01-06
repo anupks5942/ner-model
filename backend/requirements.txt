@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+spacy
+pdfplumber
+python-docx
+# --- ADD THESE ---
+boto3
+mysql-connector-python
+python-dotenv

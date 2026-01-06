@@ -65,14 +65,14 @@
     // Defensive: keep this button from ever submitting or bubbling to any outer form/container.
     processBtn.type = 'button';
 
-    fileInput.addEventListener('change', showFileNames);
-    processBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        processFiles();
-        return false;
+    // Prevent any accidental form submissions that could reload the page.
+    window.addEventListener('submit', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
     });
+
+    fileInput.addEventListener('change', showFileNames);
+    processBtn.addEventListener('click', processFiles);
 
     function showFileNames() {
         const files = fileInput.files;
@@ -88,13 +88,16 @@
         }
     }
 
-    async function processFiles() {
+    async function processFiles(event) {
+        event?.preventDefault();
+        event?.stopPropagation();
         console.log('Files selected:', fileInput.files.length);
         if (fileInput.files.length === 0) {
             alert("Please select at least one file.");
-            return;
+            return false;
         }
 
+        processBtn.disabled = true;
         outputDisplay.textContent = "Processing... please wait.";
         resultsBody.innerHTML = "";
         
@@ -114,16 +117,8 @@
                 throw new Error(`Server Error: ${response.statusText}`);
             }
 
-            const raw = await response.text();
-            console.log('Raw response:', raw);
-            let parsed;
-            try {
-                parsed = JSON.parse(raw);
-                console.log('Parsed JSON:', parsed);
-            } catch (parseError) {
-                console.log('Parse error:', parseError);
-                parsed = raw;
-            }
+            const parsed = await response.json();
+            console.log('Parsed JSON:', parsed);
 
             if (typeof parsed === 'string') {
                 outputDisplay.textContent = parsed;
@@ -136,7 +131,11 @@
             console.log('Fetch error:', error);
             outputDisplay.textContent = "Error: " + error.message;
             resultsBody.innerHTML = "";
+        } finally {
+            processBtn.disabled = false;
         }
+
+        return false;
     }
 
     function renderTable(data) {
