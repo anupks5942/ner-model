@@ -2,6 +2,10 @@ import os
 import re
 import logging
 import pdfplumber
+try:
+    import PyPDF2  # Fallback text extractor for PDFs pdfplumber cannot read
+except ImportError:  # Keep optional to avoid hard dependency failure
+    PyPDF2 = None
 import spacy
 import zipfile
 import xml.etree.ElementTree as ET
@@ -20,14 +24,14 @@ try:
     nlp = spacy.load("en_core_web_trf")
     logger.info("✅ Loaded 'en_core_web_trf' (High Accuracy Model)")
 except OSError:
-    logger.warning("⚠️ 'en_core_web_trf' not found. Falling back to 'en_core_web_trf'.")
+    logger.warning("⚠️ 'en_core_web_trf' not found. Falling back to 'en_core_web_sm'.")
     logger.warning("👉 FOR MAX ACCURACY: Run 'python -m spacy download en_core_web_trf'")
     try:
-        nlp = spacy.load("en_core_web_trf")
+        nlp = spacy.load("en_core_web_sm")
     except OSError:
         from spacy.cli import download
-        download("en_core_web_trf")
-        nlp = spacy.load("en_core_web_trf")
+        download("en_core_web_sm")
+        nlp = spacy.load("en_core_web_sm")
 
 # ==========================================
 # 2. ADVANCED FILE READING (The XML Hack)
@@ -43,6 +47,19 @@ def read_pdf(path: str) -> str:
                     text += page_text + "\n"
     except Exception as e:
         logger.error(f"PDF read failed: {e}")
+
+    # Fallback: pdfplumber sometimes returns empty for certain encodings; try PyPDF2 if available.
+    if not text.strip() and PyPDF2 is not None:
+        try:
+            with open(path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"PyPDF2 fallback failed: {e}")
+
     return text.strip()
 
 def read_docx_xml(path: str) -> str:
@@ -246,8 +263,9 @@ def extract_name(text, email=None):
     for line in lines[:20]:
         match = re.search(label_pattern, line, re.I)
         if match:
-            clean_label_name = match.group(1).strip()
-            if is_valid_candidate(clean_label_name, line):
+            clean_label_name = re.sub(r'\d+', '', match.group(1)).strip()
+            # For label-based, skip context check since we matched the label
+            if is_valid_candidate(clean_label_name):
                 return clean_label_name
 
     candidates = []
@@ -274,10 +292,20 @@ def extract_name(text, email=None):
     # STRATEGY 3: Fallback (Heuristic)
     for line in lines[:10]:
         clean_text = re.sub(r"[^a-zA-Z\s]", "", line).strip()
-        if is_valid_candidate(clean_text, line): 
-            if not re.search(r"[\d,@/]", line): 
-                 if clean_text.istitle() or clean_text.isupper():
-                     return clean_text.title()
+        if is_valid_candidate(clean_text, line):
+            if not re.search(r"[\d,@/]", line):
+                if clean_text.istitle() or clean_text.isupper():
+                    return clean_text.title()
+
+    # STRATEGY 4: Derive from email local-part if present (e.g., john.doe@ -> John Doe)
+    if email:
+        local = email.split("@", 1)[0]
+        local = re.sub(r"[._]+", " ", local)
+        local = re.sub(r"\d+", "", local).strip()
+        if local:
+            candidate = " ".join(w.capitalize() for w in local.split())
+            if is_valid_candidate(candidate):
+                return candidate
 
     return None
 

@@ -72,7 +72,11 @@
     });
 
     fileInput.addEventListener('change', showFileNames);
-    processBtn.addEventListener('click', processFiles);
+    processBtn.addEventListener('click', async (e) => {
+        e.preventDefault(); // This stops the page reload
+        e.stopPropagation(); 
+        await processFiles(); // Call the processing function
+    });
 
     function showFileNames() {
         const files = fileInput.files;
@@ -89,12 +93,10 @@
     }
 
     async function processFiles(event) {
-        event?.preventDefault();
-        event?.stopPropagation();
         console.log('Files selected:', fileInput.files.length);
         if (fileInput.files.length === 0) {
             alert("Please select at least one file.");
-            return false;
+            return;
         }
 
         processBtn.disabled = true;

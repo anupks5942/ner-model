@@ -1,6 +1,7 @@
 import os
 import csv
 import logging
+import tempfile
 import boto3
 import mysql.connector
 from dotenv import load_dotenv
@@ -77,28 +78,34 @@ def save_csv_to_s3(row):
         if not row:
             return
 
-        filename = f"{row['id']}.csv"
-        
-        # Write CSV locally
-        with open(filename, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+        # Use temp dir to avoid touching workspace files that might trigger front-end live reloads.
+        tmp_file = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, dir=tempfile.gettempdir(), newline="", encoding="utf-8")
+        try:
+            writer = csv.writer(tmp_file, quoting=csv.QUOTE_MINIMAL)
             writer.writerow([
                 row["id"],
                 row["name"],
                 row["email"],
                 row["mobile"],
                 row["dob"],
-                row["gender"]
+                row["gender"],
             ])
+            tmp_file.flush()
+        finally:
+            tmp_file.close()
 
-        # Upload to S3
+        filename = os.path.basename(tmp_file.name)
         s3_key = f"processed/{filename}"
-        s3.upload_file(filename, BUCKET_NAME, s3_key)
+        s3.upload_file(tmp_file.name, BUCKET_NAME, s3_key)
         logger.info(f"✅ Uploaded to S3: {s3_key}")
-
-        # Clean up local file
-        os.remove(filename)
 
     except Exception as e:
         logger.error(f"❌ S3 Upload Error: {e}")
         raise e
+    finally:
+        # Clean up local temp file
+        try:
+            if 'tmp_file' in locals() and os.path.exists(tmp_file.name):
+                os.remove(tmp_file.name)
+        except OSError:
+            pass
